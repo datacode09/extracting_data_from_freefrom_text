@@ -1,20 +1,28 @@
-from pyspark.sql.functions import col, regexp_extract, concat, lit
+from pyspark.sql.functions import col, regexp_extract, concat, lit, when
 
-# Assuming 'df' is your DataFrame with the original schema
-# Define a regex pattern to extract "Execution Date"
+# Step 1: Define a regex pattern to extract "Execution Date" from the "Metadata" field in "additional_features"
 execution_date_regex = r"(?i)<td>Execution Date</td><td>(.*?)</td>"
 
-# Extract the "Execution Date" using regexp_extract
-df_with_execution_date = df.withColumn("execution_date", regexp_extract(col("additional_features"), execution_date_regex, 1))
+# Step 2: Extract the full "Execution Date" information from the additional_features column
+df_with_execution_date = df.withColumn("execution_date_raw", regexp_extract(col("additional_features"), execution_date_regex, 1))
 
-# Handle cases where no "Execution Date" is found (set to None if not found)
-df_with_execution_date = df_with_execution_date.withColumn(
+# Step 3: Define a general regex pattern to match valid datetime formats (dd/MM/yyyy, yyyy-MM-dd, etc.)
+datetime_regex = r"\b(\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2})\b"
+
+# Step 4: Extract the cleaned datetime info from the raw execution date using the regex pattern
+df_with_clean_execution_date = df_with_execution_date.withColumn(
     "execution_date", 
-    col("execution_date").when(col("execution_date") == "", None).otherwise(col("execution_date"))
+    regexp_extract(col("execution_date_raw"), datetime_regex, 0)
 )
 
-# Now append the "Execution Date" into the "additional_features" column as part of the JSON string
-df_with_updated_additional_features = df_with_execution_date.withColumn(
+# Step 5: Handle cases where no "Execution Date" is found (set to None if not found)
+df_with_clean_execution_date = df_with_clean_execution_date.withColumn(
+    "execution_date", 
+    when(col("execution_date") == "", None).otherwise(col("execution_date"))
+)
+
+# Step 6: Now append the cleaned "Execution Date" into the "additional_features" column as part of the JSON string
+df_with_updated_additional_features = df_with_clean_execution_date.withColumn(
     "additional_features", 
     concat(
         col("additional_features"), 
@@ -24,5 +32,5 @@ df_with_updated_additional_features = df_with_execution_date.withColumn(
     )
 )
 
-# Show the updated DataFrame
-df_with_updated_additional_features.select("event_id", "additional_features").show(truncate=False)
+# Step 7: Show the updated DataFrame with the cleaned "Execution Date" appended
+df_with_updated_additional_features.select("event_id", "additional_features", "execution_date").show(truncate=False)
