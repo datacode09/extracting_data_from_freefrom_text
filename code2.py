@@ -1,5 +1,5 @@
 from pyspark.sql.functions import col, from_json, to_json, struct, regexp_extract, regexp_replace, lit, when
-from pyspark.sql.types import StringType, StructType, StructField
+from pyspark.sql.types import StringType, StructType, StructField, TimestampType
 
 def extract_and_append_execution_date(df, column_name="additional_features"):
     """
@@ -14,11 +14,38 @@ def extract_and_append_execution_date(df, column_name="additional_features"):
     DataFrame: A new DataFrame with the 'execution_date' appended as a separate field in the JSON string.
     """
 
-    # Step 1: Define a regex pattern to extract "Execution Date" from the "Metadata" field in the provided column
-    execution_date_regex = r"(?i)<td>Execution Date</td><td>(.*?)</td>"
+    # Define the schema for the additional_features JSON field based on the fields provided in the image
+    schema = StructType([
+        StructField("lob", StringType(), True),
+        StructField("touch_stop_timestamp", TimestampType(), True),
+        StructField("employee_number", StringType(), True),
+        StructField("client_number", StringType(), True),
+        StructField("eventName", StringType(), True),
+        StructField("pyConfirmationNote", StringType(), True),
+        StructField("processing_time_seconds", StringType(), True),
+        StructField("BacklogStatus", StringType(), True),
+        StructField("TATind", StringType(), True),
+        StructField("Marker", StringType(), True),
+        StructField("emerald_start_index", StringType(), True),
+        StructField("emerald_start_date", StringType(), True),
+        StructField("CSC", StringType(), True),
+        StructField("CSC_bus_day_equiv", StringType(), True),
+        StructField("Comment", StringType(), True),
+        StructField("DeadlineDateTime", StringType(), True),
+        StructField("GoalDateTime", StringType(), True),
+        StructField("RejectReason", StringType(), True),
+        StructField("SuspendReason", StringType(), True),
+        StructField("ValidSkill", StringType(), True),
+        StructField("Metadata", StringType(), True),  # Assuming Metadata is a string, and contains the Execution Date
+        StructField("pxUrgencyWork", StringType(), True)
+    ])
+
+    # Step 1: Parse the `additional_features` column as JSON
+    df_parsed = df.withColumn("parsed_json", from_json(col(column_name), schema))
     
-    # Step 2: Extract the full "Execution Date" information from the "Metadata" field
-    df_with_execution_date = df.withColumn("execution_date_raw", regexp_extract(col(column_name), execution_date_regex, 1))
+    # Step 2: Extract "Execution Date" from the "Metadata" field using regex
+    execution_date_regex = r"(?i)<td>Execution Date</td><td>(.*?)</td>"
+    df_with_execution_date = df_parsed.withColumn("execution_date_raw", regexp_extract(col("parsed_json.Metadata"), execution_date_regex, 1))
     
     # Step 3: Clean the execution_date_raw to remove HTML tags (e.g., <b> and </b>) using regexp_replace
     df_with_cleaned_execution_date = df_with_execution_date.withColumn(
@@ -37,29 +64,40 @@ def extract_and_append_execution_date(df, column_name="additional_features"):
         .otherwise(None)  # Set to None if no valid date is found
     )
     
-    # Step 6: Define the schema for the `additional_features` JSON field
-    schema = StructType([
-        StructField("lob", StringType(), True),
-        StructField("Metadata", StringType(), True)  # Assuming Metadata is a string
-    ])
-
-    # Step 7: Parse the `additional_features` column as JSON
-    df_parsed = df_with_final_execution_date.withColumn("parsed_json", from_json(col(column_name), schema))
-    
-    # Step 8: Add "execution_date" as a new field in the parsed JSON
-    df_with_updated_json = df_parsed.withColumn(
+    # Step 6: Add "execution_date" as a new field in the parsed JSON
+    df_with_updated_json = df_with_final_execution_date.withColumn(
         "parsed_json", 
         struct(
             col("parsed_json.lob"),                # Preserve the original 'lob' field
+            col("parsed_json.touch_stop_timestamp"), # Preserve the original 'touch_stop_timestamp'
+            col("parsed_json.employee_number"),
+            col("parsed_json.client_number"),
+            col("parsed_json.eventName"),
+            col("parsed_json.pyConfirmationNote"),
+            col("parsed_json.processing_time_seconds"),
+            col("parsed_json.BacklogStatus"),
+            col("parsed_json.TATind"),
+            col("parsed_json.Marker"),
+            col("parsed_json.emerald_start_index"),
+            col("parsed_json.emerald_start_date"),
+            col("parsed_json.CSC"),
+            col("parsed_json.CSC_bus_day_equiv"),
+            col("parsed_json.Comment"),
+            col("parsed_json.DeadlineDateTime"),
+            col("parsed_json.GoalDateTime"),
+            col("parsed_json.RejectReason"),
+            col("parsed_json.SuspendReason"),
+            col("parsed_json.ValidSkill"),
             col("parsed_json.Metadata"),           # Preserve the original 'Metadata' field
+            col("parsed_json.pxUrgencyWork"),      # Preserve the original 'pxUrgencyWork'
             col("execution_date")                  # Add the new 'execution_date' field
         )
     )
     
-    # Step 9: Convert the updated JSON object back into a string and overwrite the original column
+    # Step 7: Convert the updated JSON object back into a string and overwrite the original column
     df_final = df_with_updated_json.withColumn(column_name, to_json(col("parsed_json")))
     
-    # Step 10: Drop intermediate columns
+    # Step 8: Drop intermediate columns
     df_final = df_final.drop("parsed_json", "execution_date", "execution_date_clean", "execution_date_raw")
     
     return df_final
