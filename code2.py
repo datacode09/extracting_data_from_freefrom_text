@@ -1,7 +1,8 @@
 def extract_and_append_execution_date(df, column_name="additional_features"):
     """
     Extracts the 'Execution Date' from a JSON-like field in the provided column and appends the cleaned date 
-    into the same column as part of the JSON. Intermediate columns are removed after processing.
+    into the same column as part of the JSON. If no date is found, 'execution_date': null will be added.
+    Intermediate columns are removed after processing.
 
     Parameters:
     df (DataFrame): The input Spark DataFrame containing the column with metadata.
@@ -35,16 +36,15 @@ def extract_and_append_execution_date(df, column_name="additional_features"):
     )
     
     # Step 6: Now append the cleaned "Execution Date" into the provided column as part of the JSON string
+    # Ensure that even if the execution_date is null, we append it as "execution_date": null
     df_with_updated_additional_features = df_with_final_execution_date.withColumn(
         column_name, 
-        F.when(F.col("execution_date").isNotNull(),  # Only append if execution_date is not null
-            F.concat(
-                F.col(column_name), 
-                F.lit(', "execution_date": "'), 
-                F.col("execution_date"), 
-                F.lit('"')
-            )
-        ).otherwise(F.col(column_name))  # Leave additional_features unchanged if execution_date is null
+        F.concat(
+            F.col(column_name), 
+            F.lit(', "execution_date": '), 
+            F.when(F.col("execution_date").isNotNull(), F.concat(F.lit('"'), F.col("execution_date"), F.lit('"')))
+             .otherwise(F.lit("null"))
+        )
     )
     
     # Step 7: Drop the intermediate execution_date and execution_date_clean columns as they're no longer needed
