@@ -1,4 +1,3 @@
-from pyspark.sql.functions import col, from_json, to_json, struct, regexp_extract, regexp_replace, lit, when
 from pyspark.sql.types import StringType, StructType, StructField, TimestampType
 
 def extract_and_append_execution_date(df, column_name="additional_features"):
@@ -41,16 +40,16 @@ def extract_and_append_execution_date(df, column_name="additional_features"):
     ])
 
     # Step 1: Parse the `additional_features` column as JSON
-    df_parsed = df.withColumn("parsed_json", from_json(col(column_name), schema))
+    df_parsed = df.withColumn("parsed_json", F.from_json(F.col(column_name), schema))
     
     # Step 2: Extract "Execution Date" from the "Metadata" field using regex
     execution_date_regex = r"(?i)<td>Execution Date</td><td>(.*?)</td>"
-    df_with_execution_date = df_parsed.withColumn("execution_date_raw", regexp_extract(col("parsed_json.Metadata"), execution_date_regex, 1))
+    df_with_execution_date = df_parsed.withColumn("execution_date_raw", F.regexp_extract(F.col("parsed_json.Metadata"), execution_date_regex, 1))
     
     # Step 3: Clean the execution_date_raw to remove HTML tags (e.g., <b> and </b>) using regexp_replace
     df_with_cleaned_execution_date = df_with_execution_date.withColumn(
         "execution_date_clean", 
-        regexp_replace(col("execution_date_raw"), r"<[^>]+>", "")  # Remove all HTML tags like <b>, </b>
+        F.regexp_replace(F.col("execution_date_raw"), r"<[^>]+>", "")  # Remove all HTML tags like <b>, </b>
     )
     
     # Step 4: Define a regex pattern to match valid datetime formats (dd/MM/yyyy, yyyy-MM-dd, etc.)
@@ -59,43 +58,43 @@ def extract_and_append_execution_date(df, column_name="additional_features"):
     # Step 5: Extract valid datetime from the cleaned execution_date using the regex for datetime formats
     df_with_final_execution_date = df_with_cleaned_execution_date.withColumn(
         "execution_date", 
-        when(col("execution_date_clean").isNotNull() & (col("execution_date_clean") != ""), 
-             regexp_extract(col("execution_date_clean"), datetime_regex, 0))  # Extract date only if the field is non-null/non-empty
+        F.when(F.col("execution_date_clean").isNotNull() & (F.col("execution_date_clean") != ""), 
+             F.regexp_extract(F.col("execution_date_clean"), datetime_regex, 0))  # Extract date only if the field is non-null/non-empty
         .otherwise(None)  # Set to None if no valid date is found
     )
     
     # Step 6: Add "execution_date" as a new field in the parsed JSON
     df_with_updated_json = df_with_final_execution_date.withColumn(
         "parsed_json", 
-        struct(
-            col("parsed_json.lob"),                # Preserve the original 'lob' field
-            col("parsed_json.touch_stop_timestamp"), # Preserve the original 'touch_stop_timestamp'
-            col("parsed_json.employee_number"),
-            col("parsed_json.client_number"),
-            col("parsed_json.eventName"),
-            col("parsed_json.pyConfirmationNote"),
-            col("parsed_json.processing_time_seconds"),
-            col("parsed_json.BacklogStatus"),
-            col("parsed_json.TATind"),
-            col("parsed_json.Marker"),
-            col("parsed_json.emerald_start_index"),
-            col("parsed_json.emerald_start_date"),
-            col("parsed_json.CSC"),
-            col("parsed_json.CSC_bus_day_equiv"),
-            col("parsed_json.Comment"),
-            col("parsed_json.DeadlineDateTime"),
-            col("parsed_json.GoalDateTime"),
-            col("parsed_json.RejectReason"),
-            col("parsed_json.SuspendReason"),
-            col("parsed_json.ValidSkill"),
-            col("parsed_json.Metadata"),           # Preserve the original 'Metadata' field
-            col("parsed_json.pxUrgencyWork"),      # Preserve the original 'pxUrgencyWork'
-            col("execution_date")                  # Add the new 'execution_date' field
+        F.struct(
+            F.col("parsed_json.lob"),                # Preserve the original 'lob' field
+            F.col("parsed_json.touch_stop_timestamp"), # Preserve the original 'touch_stop_timestamp'
+            F.col("parsed_json.employee_number"),
+            F.col("parsed_json.client_number"),
+            F.col("parsed_json.eventName"),
+            F.col("parsed_json.pyConfirmationNote"),
+            F.col("parsed_json.processing_time_seconds"),
+            F.col("parsed_json.BacklogStatus"),
+            F.col("parsed_json.TATind"),
+            F.col("parsed_json.Marker"),
+            F.col("parsed_json.emerald_start_index"),
+            F.col("parsed_json.emerald_start_date"),
+            F.col("parsed_json.CSC"),
+            F.col("parsed_json.CSC_bus_day_equiv"),
+            F.col("parsed_json.Comment"),
+            F.col("parsed_json.DeadlineDateTime"),
+            F.col("parsed_json.GoalDateTime"),
+            F.col("parsed_json.RejectReason"),
+            F.col("parsed_json.SuspendReason"),
+            F.col("parsed_json.ValidSkill"),
+            F.col("parsed_json.Metadata"),           # Preserve the original 'Metadata' field
+            F.col("parsed_json.pxUrgencyWork"),      # Preserve the original 'pxUrgencyWork'
+            F.col("execution_date")                  # Add the new 'execution_date' field
         )
     )
     
     # Step 7: Convert the updated JSON object back into a string and overwrite the original column
-    df_final = df_with_updated_json.withColumn(column_name, to_json(col("parsed_json")))
+    df_final = df_with_updated_json.withColumn(column_name, F.to_json(F.col("parsed_json")))
     
     # Step 8: Drop intermediate columns
     df_final = df_final.drop("parsed_json", "execution_date", "execution_date_clean", "execution_date_raw")
