@@ -52,3 +52,9 @@ def extract_and_append_execution_date(df, column_name="additional_features"):
     
     # Return the final DataFrame
     return df_final
+
+# Assuming your DataFrame is named 'df' and the column is 'additional_features'
+df_final = extract_and_append_execution_date(df, "additional_features")
+
+# Show the final DataFrame
+df_final.select("event_id", "additional_features").show(truncate=False)
